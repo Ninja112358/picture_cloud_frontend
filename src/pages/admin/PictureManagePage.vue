@@ -17,6 +17,15 @@
       <a-form-item label="标签">
         <a-select mode="tags" v-model:value="searchParams.tags" placeholder="请输入图片标签" style="min-width: 180px" :options="tagOptions"/>
       </a-form-item>
+      <a-form-item label="审核状态" name="reviewStatus">
+        <a-select
+          v-model:value="searchParams.reviewStatus"
+          :options="PIC_REVIEW_STATUS_OPTIONS"
+          placeholder="请输入审核状态"
+          style="min-width: 180px"
+          allow-clear
+        />
+      </a-form-item>
       <a-form-item>
         <a-button type="primary" html-type="submit">搜索</a-button>
       </a-form-item>
@@ -50,6 +59,15 @@
           <div>宽高比: {{ record.picScale }}</div>
           <div>大小: {{ (record.picSize / 1024).toFixed(2) }}</div>
         </template>
+        <!-- 审核信息 -->
+        <template v-if="column.dataIndex === 'reviewMessage'">
+          <div>审核状态：{{ PIC_REVIEW_STATUS_MAP[record.reviewStatus] }}</div>
+          <div>审核信息：{{ record.reviewMessage }}</div>
+          <div>审核人：{{ record.reviewerId }}</div>
+          <div v-if="record.reviewTime">
+            审核时间：{{ dayjs(record.reviewTime).format('YYYY-MM-DD HH:mm:ss') }}
+          </div>
+        </template>
 
         <template v-if="['name', 'introduction'].includes(column.dataIndex)">
           <div>
@@ -70,8 +88,23 @@
         <template v-if="column.dataIndex === 'editTime'">
           {{ dayjs(record.updateTime).format('YYYY-MM-DD HH:mm:ss') }}
         </template>
+
         <template v-else-if="column.dataIndex === 'action'">
+
           <div class="editable-row-operations">
+            <a-button
+              v-if="record.reviewStatus !== PIC_REVIEW_STATUS_ENUM.PASS"
+              @click="handleReview(record, PIC_REVIEW_STATUS_ENUM.PASS)"
+            >
+              通过
+            </a-button>
+            <a-button
+              v-if="record.reviewStatus !== PIC_REVIEW_STATUS_ENUM.REJECT"
+              danger
+              @click="handleReview(record, PIC_REVIEW_STATUS_ENUM.REJECT)"
+            >
+              拒绝
+            </a-button>
             <span v-if="editableData[record.id]">
               <a-button @click="doEditCancel(record.id)">取消</a-button>
               <a-button type="primary" @click="doEditSave(record.id)">保存</a-button>
@@ -93,12 +126,17 @@ import {
   deletePictureUsingPost,
   listPictureByPageUsingPost,
   updatePictureUsingPost,
-  listPictureTagCategoryUsingGet
+  listPictureTagCategoryUsingGet, doPictureReviewUsingPost
 } from '@/service/api/PictureController.ts'
 import { message, Modal } from 'ant-design-vue'
 import type { UnwrapRef } from 'vue';
 import { ExclamationCircleOutlined } from '@ant-design/icons-vue'
 import dayjs from 'dayjs'
+import {
+  PIC_REVIEW_STATUS_ENUM,
+  PIC_REVIEW_STATUS_MAP,
+  PIC_REVIEW_STATUS_OPTIONS
+} from '../../constants/picture.ts'
 const columns = [
   {
     title: 'id',
@@ -143,6 +181,10 @@ const columns = [
     align: 'center',
     width: '180px'
   },{
+    title: '审核信息',
+    dataIndex: 'reviewMessage',
+    align: 'center'
+  },{
     title: '创建时间',
     dataIndex: 'createTime',
     align: 'center'
@@ -155,7 +197,7 @@ const columns = [
     title: '操作',
     dataIndex: 'action',
     align: 'center',
-    width: '200px',
+    width: '100px',
   },
 ]
 
@@ -262,6 +304,23 @@ const doDelete = async (id: string) => {
 }
 
 
+const handleReview = async (record: API.Picture, reviewStatus: number) => {
+  const reviewMessage = reviewStatus === PIC_REVIEW_STATUS_ENUM.PASS ? '管理员操作通过' : '管理员操作拒绝'
+  const res = await doPictureReviewUsingPost({
+    id: record.id,
+    reviewStatus,
+    reviewMessage,
+  })
+  if (res.data.code === 0) {
+    message.success('审核操作成功')
+    // 重新获取列表
+    fetchData()
+  } else {
+    message.error('审核操作失败，' + res.data.message)
+  }
+}
+
+
 const categoryOptions = ref<string[]>([])
 const tagOptions = ref<string[]>([])
 /**
@@ -295,5 +354,6 @@ const getTagCategoryOptions = async () => {
 
 .editable-row-operations button {
   margin-right: 8px;
+  margin-bottom: 8px;
 }
 </style>
